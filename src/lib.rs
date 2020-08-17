@@ -116,6 +116,7 @@ pub mod delay;
 pub mod dma;
 #[cfg(feature = "device-selected")]
 pub mod flash;
+pub mod global_interrupt;
 #[cfg(feature = "device-selected")]
 pub mod gpio;
 #[cfg(feature = "device-selected")]
