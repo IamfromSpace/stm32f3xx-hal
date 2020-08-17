@@ -1,3 +1,4 @@
+// TODO: Out of date!
 //! Example of using a number of timer channels in PWM mode.
 //! Target board: STM32F3DISCOVERY
 #![no_std]

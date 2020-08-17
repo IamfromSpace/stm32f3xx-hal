@@ -1,3 +1,4 @@
+// TODO: Out of date!
 /*!
   # Pulse width modulation
 
@@ -153,7 +154,9 @@
 
 use crate::pac::{TIM15, TIM16, TIM17, TIM2};
 use core::marker::PhantomData;
+use core::ops::Deref;
 use embedded_hal::PwmPin;
+use mutex_trait::prelude::Mutex;
 
 #[cfg(any(
     feature = "stm32f318",
@@ -417,7 +420,10 @@ pub struct WithNPins {}
 /// is using any pins yet.
 ///
 /// If there are no pins supplied, it cannot be enabled.
-pub struct PwmChannel<X, T> {
+pub struct PwmChannel<M, X, T> {
+    timx: M,
+    // Even though we know timx, we keep this timx_chy for typestate enforcement of valid
+    // timer/channel combos.
     timx_chy: PhantomData<X>,
     pin_status: PhantomData<T>,
 }
@@ -433,17 +439,18 @@ macro_rules! pwm_timer_private {
         /// 0 degrees (2% duty cycle) to 180 degrees (4% duty cycle) might choose
         /// a resolution of 9000.  This allows the servo to be set in increments
         /// of exactly one degree.
+        // TODO: Need to used the constained HAL RCC, not the PAC RCC
         #[allow(unused_parens)]
-        pub fn $timx(tim: $TIMx, res: $res, freq: Hertz, clocks: &Clocks) -> ($(PwmChannel<$TIMx_CHy, NoPins>),+) {
+        pub fn $timx<MRCC: Mutex<Data = RCC>, MTIM: Mutex<Data = $TIMx> + Clone + From<$TIMx>>(tim: $TIMx, res: $res, freq: Hertz, clocks: &Clocks, rcc_mutex: &mut MRCC) -> ($(PwmChannel<MTIM, $TIMx_CHy, NoPins>),+) {
             // Power the timer and reset it to ensure a clean state
             // We use unsafe here to abstract away this implementation detail
             // Justification: It is safe because only scopes with mutable references
             // to TIMx should ever modify this bit.
-            unsafe {
-                (*RCC::ptr()).$apbxenr.modify(|_, w| w.$timxen().set_bit());
-                (*RCC::ptr()).$apbxrstr.modify(|_, w| w.$timxrst().set_bit());
-                (*RCC::ptr()).$apbxrstr.modify(|_, w| w.$timxrst().clear_bit());
-            }
+            rcc_mutex.lock(|rcc| {
+                rcc.$apbxenr.modify(|_, w| w.$timxen().set_bit());
+                rcc.$apbxrstr.modify(|_, w| w.$timxrst().set_bit());
+                rcc.$apbxrstr.modify(|_, w| w.$timxrst().clear_bit());
+            });
 
             // enable auto reload preloader
             tim.cr1.modify(|_, w| w.arpe().set_bit());
@@ -477,10 +484,12 @@ macro_rules! pwm_timer_private {
             // Enable the Timer
             tim.cr1.modify(|_, w| w.cen().set_bit());
 
+            let timx: MTIM = tim.into();
+
             // TODO: Passing in the constructor is a bit silly,
             // is there an alternative approach to get this to repeat,
             // even though its not dynamic?
-            ($($x { timx_chy: PhantomData, pin_status: PhantomData }),+)
+            ($($x { timx: timx.clone(), timx_chy: PhantomData, pin_status: PhantomData }),+)
         }
     }
 }
@@ -523,39 +532,50 @@ macro_rules! pwm_timer_with_break {
 
 macro_rules! pwm_channel_pin {
     ($resulting_state:ident, $TIMx:ident, $TIMx_CHy:ident, $output_to_pzx:ident, $Pzi:ident, $AFj:ident, $ccmrz_output:ident, $ocym:ident, $ocype:ident) => {
-        impl PwmChannel<$TIMx_CHy, NoPins> {
+        impl<M: Mutex<Data = $TIMx>> PwmChannel<M, $TIMx_CHy, NoPins> {
             /// Output to a specific pin from a channel that does not yet have
             /// any pins.  This channel cannot be enabled until this method
             /// is called.
             ///
             /// The pin is consumed and cannot be returned.
-            pub fn $output_to_pzx(self, _p: $Pzi<$AFj>) -> PwmChannel<$TIMx_CHy, $resulting_state> {
-                unsafe {
-                    (*$TIMx::ptr()).$ccmrz_output().modify(|_, w| {
-                        w
-                            // Select PWM Mode 1 for CHy
-                            .$ocym()
-                            .bits(0b0110)
-                            // set pre-load enable so that updates to the duty cycle
-                            // propagate but _not_ in the middle of a cycle.
-                            .$ocype()
-                            .set_bit()
+            pub fn $output_to_pzx(
+                self,
+                _p: $Pzi<$AFj>,
+            ) -> PwmChannel<M, $TIMx_CHy, $resulting_state> {
+                let mut timx = self.timx;
+                timx.lock(|t| {
+                    #[allow(unused_unsafe)]
+                    t.$ccmrz_output().modify(|_, w| {
+                        unsafe {
+                            w
+                                // Select PWM Mode 1 for CHy
+                                .$ocym()
+                                .bits(0b0110)
+                                // set pre-load enable so that updates to the duty cycle
+                                // propagate but _not_ in the middle of a cycle.
+                                .$ocype()
+                                .set_bit()
+                        }
                     });
-                }
+                });
                 PwmChannel {
+                    timx,
                     timx_chy: PhantomData,
                     pin_status: PhantomData,
                 }
             }
         }
 
-        impl PwmChannel<$TIMx_CHy, $resulting_state> {
+        impl<M> PwmChannel<M, $TIMx_CHy, $resulting_state> {
             /// Output to a specific pin from a channel is already configured
             /// with output pins.  There is no limit to the number of pins that
             /// can be used (as long as they are compatible).
             ///
             /// The pin is consumed and cannot be returned.
-            pub fn $output_to_pzx(self, _p: $Pzi<$AFj>) -> PwmChannel<$TIMx_CHy, $resulting_state> {
+            pub fn $output_to_pzx(
+                self,
+                _p: $Pzi<$AFj>,
+            ) -> PwmChannel<M, $TIMx_CHy, $resulting_state> {
                 self
             }
         }
@@ -692,37 +712,47 @@ macro_rules! pwm_channel4_pin {
 
 macro_rules! pwm_pin_for_pwm_channel_private {
     ($state:ident, $TIMx:ident, $TIMx_CHy:ty, $res:ty, $ccx_enable:ident, $ccrx:ident, $ccrq:ident) => {
-        impl PwmPin for PwmChannel<$TIMx_CHy, $state> {
+        impl<M: Mutex<Data = $TIMx> + Deref<Target = $TIMx>> PwmPin
+            for PwmChannel<M, $TIMx_CHy, $state>
+        {
             type Duty = $res;
 
             fn disable(&mut self) {
-                unsafe {
-                    (*$TIMx::ptr())
-                        .ccer
-                        .modify(|_, w| w.$ccx_enable().clear_bit());
-                }
+                // This _must_ lock for any timer that has multiple channels in use
+                self.timx.lock(|t| {
+                    t.ccer.modify(|_, w| w.$ccx_enable().clear_bit());
+                })
             }
 
             fn enable(&mut self) {
-                unsafe {
-                    (*$TIMx::ptr())
-                        .ccer
-                        .modify(|_, w| w.$ccx_enable().set_bit());
-                }
+                // This _must_ lock for any timer that has multiple channels in use
+                self.timx.lock(|t| {
+                    t.ccer.modify(|_, w| w.$ccx_enable().set_bit());
+                })
             }
 
             fn get_max_duty(&self) -> Self::Duty {
-                unsafe { (*$TIMx::ptr()).arr.read().arr().bits() }
+                (*self.timx).arr.read().arr().bits()
             }
 
             fn get_duty(&self) -> Self::Duty {
-                unsafe { (*$TIMx::ptr()).$ccrx.read().$ccrq().bits() }
+                (*self.timx).$ccrx.read().$ccrq().bits()
             }
 
             fn set_duty(&mut self, duty: Self::Duty) -> () {
-                unsafe {
-                    (*$TIMx::ptr()).$ccrx.modify(|_, w| w.$ccrq().bits(duty));
-                }
+                // TODO: Consider bypassing the lock here and instead conjure a `&mut TIMx` which
+                // for certain Mutex implementations will be more performant.
+                //
+                // That's theoretically safe because:
+                //   a) The user has given away TIMx, so they cannot use it
+                //   b) PWMChannels are not Copy or Clone so
+                //   c) A channel only ever uses its corresponding ccrx register
+                //
+                // This implies that this struct is the only actor on ccrx and is therefore
+                // read-write atomic without locking.
+                #[allow(unused_unsafe)]
+                self.timx
+                    .lock(|t| unsafe { t.$ccrx.modify(|_, w| w.$ccrq().bits(duty)) });
             }
         }
     };
