@@ -771,6 +771,9 @@ macro_rules! pwm_pin_for_pwm_channel_private {
                 //
                 // This implies that this struct is the only actor on ccrx and is therefore
                 // read-write atomic without locking.
+                //
+                // TODO: Even better, break apart the TIMx register block so that the borrow
+                // checker prove it for us, and we don't need a lock or any unsafe code.
                 #[allow(unused_unsafe)]
                 self.timx
                     .lock(|t| unsafe { t.$ccrx.modify(|_, w| w.$ccrq().bits(duty)) });
