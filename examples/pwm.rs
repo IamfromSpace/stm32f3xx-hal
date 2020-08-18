@@ -16,10 +16,7 @@ use hal::flash::FlashExt;
 use hal::global_interrupt::GlobalInterrupt;
 use hal::gpio::GpioExt;
 use hal::pac;
-use hal::pwm::{
-    tim16, tim2, tim3, tim8, PwmChannel, WithNPins, WithPins, TIM16_CH1, TIM2_CH3, TIM3_CH1,
-    TIM8_CH1,
-};
+use hal::pwm::{tim16, tim2, tim3, tim8, PwmChannel};
 use hal::rcc::RccExt;
 use hal::time::U32Ext;
 use mutex_trait::Exclusive;
@@ -69,7 +66,7 @@ fn main() -> ! {
     // tim3_channels.0.enable();
 
     // Each channel can be used with a different duty cycle and have many pins
-    let mut tim3_ch1: PwmChannel<GlobalInterrupt<pac::TIM3>, TIM3_CH1, WithPins> =
+    let mut tim3_ch1: PwmChannel<GlobalInterrupt<_>, _, _> =
         tim3_channels.0.output_to_pa6(pa6).output_to_pb4(pb4);
     tim3_ch1.set_duty(tim3_ch1.get_max_duty() / 20); // 5% duty cyle
     tim3_ch1.enable();
@@ -113,8 +110,7 @@ fn main() -> ! {
         &mut Exclusive::new(&mut rcc.apb1), // global register with timer settings
     );
 
-    let mut tim2_ch3: PwmChannel<GlobalInterrupt<pac::TIM2>, TIM2_CH3, WithPins> =
-        tim2_channels.2.output_to_pb10(pb10);
+    let mut tim2_ch3: PwmChannel<GlobalInterrupt<_>, _, _> = tim2_channels.2.output_to_pb10(pb10);
     tim2_ch3.set_duty(tim2_ch3.get_max_duty() / 20); // 5% duty cyle
     tim2_ch3.enable();
 
@@ -122,7 +118,7 @@ fn main() -> ! {
     //
     // A single channel timer, so it doesn't return a tuple.  We can
     // just use it directly
-    let mut tim16_ch1: PwmChannel<GlobalInterrupt<pac::TIM16>, TIM16_CH1, WithPins> = tim16(
+    let mut tim16_ch1: PwmChannel<GlobalInterrupt<_>, _, _> = tim16(
         dp.TIM16,
         1280,                               // resolution of duty cycle
         50.hz(),                            // frequency of period
@@ -145,8 +141,7 @@ fn main() -> ! {
         &mut Exclusive::new(&mut rcc.apb2), // global register with timer settings
     );
 
-    let mut tim8_ch1: PwmChannel<GlobalInterrupt<pac::TIM8>, TIM8_CH1, WithNPins> =
-        tim8_channels.0.output_to_pc10(pc10);
+    let mut tim8_ch1: PwmChannel<GlobalInterrupt<_>, _, _> = tim8_channels.0.output_to_pc10(pc10);
     tim8_ch1.set_duty(tim8_ch1.get_max_duty() / 10); // 10% duty cyle
     tim8_ch1.enable();
 

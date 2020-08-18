@@ -67,7 +67,7 @@
     let pb1 = gpiob.pb1.into_af2(&mut gpiob.moder, &mut gpiob.afrl);
     let pb4 = gpiob.pb4.into_af2(&mut gpiob.moder, &mut gpiob.afrl);
 
-    let mut ch1: PwmChannel<GlobalInterrupt<TIM3>, TIM3_CH1, WithPins> = ch1_no_pins
+    let mut ch1: PwmChannel<GlobalInterrupt<_>, _, _> = ch1_no_pins
         .output_to_pa6(pa6)
         .output_to_pb4(pb4);
 
@@ -120,7 +120,8 @@
 
   Certain timers have complementary outputs.  Currently, channels can
   output to _either_ pins used for standard or complementary pins (and
-  do not exhibit complementary behaviors).
+  do not exhibit complementary behaviors).  Most of the time this can
+  be totally invisible via type inference and partial type hints.
 
   In this example, we use a complementary pin in the same way we'd use
   any other pwm channel.
@@ -148,7 +149,7 @@
     let mut gpioa = dp.GPIOB.split(&mut rcc.ahb);
     let pa7 = gpioa.pa7.into_af6(&mut gpioa.moder, &mut gpioa.afrl);
 
-    let mut ch1: PwmChannel<GlobalInterrupt<TIM1>, TIM1_CH1, WithNPins> =
+    let mut ch1: PwmChannel<GlobalInterrupt<_>, _, _> =
         ch1_no_pins.output_to(pa7);
     ch1.enable();
   ```
@@ -165,7 +166,7 @@
     let pa7 = gpioa.pa7.into_af6(&mut gpioa.moder, &mut gpioa.afrl);
     let pa8 = gpioa.pa8.into_af6(&mut gpioa.moder, &mut gpioa.afrl);
 
-    let mut ch1: PwmChannel<GlobalInterrupt<TIM1>, TIM1_CH1, WithPins> = ch1_no_pins
+    let mut ch1: PwmChannel<GlobalInterrupt<_>, _, _> = ch1_no_pins
         .output_to(pa7)
         // DOES NOT COMPILE
         .output_to(pa8);
