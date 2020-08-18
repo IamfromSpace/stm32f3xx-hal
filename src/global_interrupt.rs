@@ -55,3 +55,31 @@ global_interrupt!(TIM17);
 global_interrupt!(TIM2);
 
 // TODO: a lot more...
+
+// TODO: Ideally this macro would execute in a place that already has these guards
+#[cfg(any(
+    feature = "stm32f302",
+    feature = "stm32f303",
+    feature = "stm32f373",
+    feature = "stm32f378",
+    feature = "stm32f334",
+    feature = "stm32f328",
+    feature = "stm32f358",
+    feature = "stm32f398"
+))]
+#[cfg(any(
+    feature = "stm32f302",
+    feature = "stm32f303",
+    feature = "stm32f373",
+    feature = "stm32f378",
+    feature = "stm32f334",
+    feature = "stm32f328",
+    feature = "stm32f358",
+    feature = "stm32f398"
+))]
+use crate::pac::TIM3;
+global_interrupt!(TIM3);
+#[cfg(any(feature = "stm32f303", feature = "stm32f358", feature = "stm32f398"))]
+use crate::pac::TIM8;
+#[cfg(any(feature = "stm32f303", feature = "stm32f358", feature = "stm32f398"))]
+global_interrupt!(TIM8);
