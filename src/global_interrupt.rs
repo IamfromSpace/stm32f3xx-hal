@@ -12,9 +12,9 @@ pub struct GlobalInterrupt<T> {
 // note: This only works with 0 sized structs
 macro_rules! global_interrupt {
     ($REG:ident) => {
-        impl Into<GlobalInterrupt<$REG>> for $REG {
-            fn into(self) -> GlobalInterrupt<$REG> {
-                GlobalInterrupt { t: self }
+        impl From<$REG> for GlobalInterrupt<$REG> {
+            fn from(t: $REG) -> GlobalInterrupt<$REG> {
+                GlobalInterrupt { t }
             }
         }
 
