@@ -1,4 +1,3 @@
-// TODO: Out of date!
 /*!
   # Pulse width modulation
 
@@ -15,6 +14,11 @@
   two of these channels, so we can simply ignore them with `_` when we
   destructure.
 
+  We'll need to pass in something that implements the Mutex trait for
+  the Advanced Peripheral Bus (APB1).  Since it's short lived and we
+  already have exclusive access via `&mut rcc.apb1`, we can just wrap
+  that in the noop mutex, Exclusive.
+
   ```
     // (Other imports omitted)
     use stm32f3xx-hal::pwm::tim3;
@@ -28,7 +32,7 @@
     // Set the resolution of our duty cycle to 9000 and our period to
     // 50hz.
     let mut (c1_no_pins, _, _, c4_no_pins) =
-        tim3(device.TIM3, 9000, 50.hz(), clocks);
+        tim3(device.TIM3, 9000, 50.hz(), clocks, &mut Exclusive::new(&mut rcc.apb1);
   ```
 
   In this case, we're only going to use channel 1 and channel 4.
@@ -47,6 +51,14 @@
   From here we can connect as many compatible pins as we like.  Once
   the channels have pins connected they can be enabled.
 
+  This is also where we use type parameters to declare the mutex that
+  will guard the TIM3 register block.  Each channel needs shared
+  mutable access to that block, so it needs a Mutex.  We use a
+  paramater to choose the particular implementation.  In this case
+  since it's shared it must be Clone, which further limits our
+  options.  We use the GlobalInterrupt implementation in this example
+  (the ch1 definition solves the ch4 type).
+
   ```
     let mut gpioa = dp.GPIOB.split(&mut rcc.ahb);
     let pa6 = gpioa.pa6.into_af2(&mut gpioa.moder, &mut gpioa.afrl);
@@ -55,7 +67,7 @@
     let pb1 = gpiob.pb1.into_af2(&mut gpiob.moder, &mut gpiob.afrl);
     let pb4 = gpiob.pb4.into_af2(&mut gpiob.moder, &mut gpiob.afrl);
 
-    let mut ch1 = ch1_no_pins
+    let mut ch1: PwmChannel<GlobalInterrupt<TIM3>, TIM3_CH1, WithPins> = ch1_no_pins
         .output_to_pa6(pa6)
         .output_to_pb4(pb4);
 
@@ -95,15 +107,20 @@
 
     // Set the resolution of our duty cycle to 9000 and our period to
     // 50hz.
-    let mut c1_no_pins = tim16(device.TIM3, 9000, 50.hz(), clocks);
+    let mut c1_no_pins = tim16(
+        device.TIM3,
+        9000,
+        50.hz(),
+        clocks,
+        &mut Exclusive::new(&mut rcc.apb1
+    );
   ```
 
   ## Complementary timers
 
   Certain timers have complementary outputs.  Currently, channels can
   output to _either_ pins used for standard or complementary pins (and
-  do not exhibit complementary behaviors).  Most of the time this will
-  be totally invisible.
+  do not exhibit complementary behaviors).
 
   In this example, we use a complementary pin in the same way we'd use
   any other pwm channel.
@@ -120,12 +137,19 @@
 
     // Set the resolution of our duty cycle to 9000 and our period to
     // 50hz.
-    let mut (ch1_no_pins, _, _, _) = tim1(device.TIM3, 9000, 50.hz(), clocks);
+    let mut (ch1_no_pins, _, _, _) = tim1(
+        device.TIM3,
+        9000,
+        50.hz(),
+        clocks,
+        &mut Exclusive::new(&mut rcc.apb1
+    );
 
     let mut gpioa = dp.GPIOB.split(&mut rcc.ahb);
     let pa7 = gpioa.pa7.into_af6(&mut gpioa.moder, &mut gpioa.afrl);
 
-    let mut ch1 = ch1_no_pins.output_to(pa7);
+    let mut ch1: PwmChannel<GlobalInterrupt<TIM1>, TIM1_CH1, WithNPins> =
+        ch1_no_pins.output_to(pa7);
     ch1.enable();
   ```
 
@@ -141,7 +165,7 @@
     let pa7 = gpioa.pa7.into_af6(&mut gpioa.moder, &mut gpioa.afrl);
     let pa8 = gpioa.pa8.into_af6(&mut gpioa.moder, &mut gpioa.afrl);
 
-    let mut ch1 = ch1_no_pins
+    let mut ch1: PwmChannel<GlobalInterrupt<TIM1>, TIM1_CH1, WithPins> = ch1_no_pins
         .output_to(pa7)
         // DOES NOT COMPILE
         .output_to(pa8);
