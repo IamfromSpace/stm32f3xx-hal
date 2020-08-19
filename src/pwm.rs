@@ -179,6 +179,25 @@
   Once we've connected a complementary pin (PA7) we are now _only_
   allowed to use other complementary pins.  PA8 is a valid choice if
   we have no pins in use, but it cannot be used once we've used PA7.
+
+  ## Single Channels from Multi-Channel Timers
+
+  If we only need a single channel, we can instead construct only it.
+  The advantage here is that the Mutex that guards the timer now does
+  not need to be Clone.  In this case, we can use OwnedExclusive,
+  which won't have runtime overhead.
+  ```
+    let mut tim1_ch1: PwmChannel<OwnedExclusive<_>, _, _> = tim1_ch1(
+        dp.TIM1,
+        1280,                               // resolution of duty cycle
+        50.hz(),                            // frequency of period
+        &clocks,                            // To get the timer's clock speed
+        &mut Exclusive::new(&mut rcc.apb2), // global register with timer settings
+    )
+    .output_to_pa8(pa8);
+    tim1_ch1.set_duty(tim16_ch1.get_max_duty() / 20); // 5% duty cyle
+    tim1_ch1.enable();
+  ```
 */
 
 use crate::pac::{TIM15, TIM16, TIM17, TIM2};
@@ -836,6 +855,59 @@ macro_rules! tim1_common {
             [Clone],
             [TIM1_CH1, TIM1_CH2, TIM1_CH3, TIM1_CH4],
             [clone, clone, clone, clone]
+        );
+
+        // TODO: Yet another macro wrapper and then apply for all timers
+        pwm_timer_with_break!(
+            tim1_ch1,
+            TIM1,
+            u16,
+            APB2,
+            pclk2,
+            tim1rst,
+            tim1en,
+            [],
+            [TIM1_CH1],
+            [into]
+        );
+
+        pwm_timer_with_break!(
+            tim1_ch2,
+            TIM1,
+            u16,
+            APB2,
+            pclk2,
+            tim1rst,
+            tim1en,
+            [],
+            [TIM1_CH2],
+            [into]
+        );
+
+        pwm_timer_with_break!(
+            tim1_ch3,
+            TIM1,
+            u16,
+            APB2,
+            pclk2,
+            tim1rst,
+            tim1en,
+            [],
+            [TIM1_CH3],
+            [into]
+        );
+
+        pwm_timer_with_break!(
+            tim1_ch4,
+            TIM1,
+            u16,
+            APB2,
+            pclk2,
+            tim1rst,
+            tim1en,
+            [],
+            [TIM1_CH4],
+            [into]
         );
 
         // Channels

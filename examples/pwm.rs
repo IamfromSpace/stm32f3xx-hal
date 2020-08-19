@@ -17,7 +17,7 @@ use hal::global_interrupt::GlobalInterrupt;
 use hal::gpio::GpioExt;
 use hal::owned_exclusive::OwnedExclusive;
 use hal::pac;
-use hal::pwm::{tim16, tim2, tim3, tim8, PwmChannel};
+use hal::pwm::{tim16, tim1_ch1, tim2, tim3, tim8, PwmChannel};
 use hal::rcc::RccExt;
 use hal::time::U32Ext;
 use mutex_trait::Exclusive;
@@ -37,6 +37,7 @@ fn main() -> ! {
     let pa4 = gpioa.pa4.into_af2(&mut gpioa.moder, &mut gpioa.afrl);
     let pa6 = gpioa.pa6.into_af2(&mut gpioa.moder, &mut gpioa.afrl);
     let pa7 = gpioa.pa7.into_af2(&mut gpioa.moder, &mut gpioa.afrl);
+    let pa8 = gpioa.pa8.into_af6(&mut gpioa.moder, &mut gpioa.afrh);
 
     let mut gpiob = dp.GPIOB.split(&mut rcc.ahb);
     let pb0 = gpiob.pb0.into_af2(&mut gpiob.moder, &mut gpiob.afrl);
@@ -155,6 +156,23 @@ fn main() -> ! {
     //
     // DOES NOT COMPILE
     // tim8_ch1.output_to_pc6(gpioc.pc6.into_af4(&mut gpioc.moder, &mut gpioc.afrl));
+
+    // TIM1_CH1
+    //
+    // If we only need a single channel, we can instead construct only
+    // it.  The advantage here is that the Mutex that guards the timer
+    // now does not need to be Clone.  In this case, we can use
+    // OwnedExclusive, which won't have runtime overhead.
+    let mut tim1_ch1: PwmChannel<OwnedExclusive<_>, _, _> = tim1_ch1(
+        dp.TIM1,
+        1280,                               // resolution of duty cycle
+        50.hz(),                            // frequency of period
+        &clocks,                            // To get the timer's clock speed
+        &mut Exclusive::new(&mut rcc.apb2), // global register with timer settings
+    )
+    .output_to_pa8(pa8);
+    tim1_ch1.set_duty(tim16_ch1.get_max_duty() / 20); // 5% duty cyle
+    tim1_ch1.enable();
 
     loop {}
 }
