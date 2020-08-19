@@ -95,6 +95,10 @@
   Timers that only have only one channel do not return a tuple, and
   instead return the (unconfigured) channel directly.
 
+  In this case, since there is just as single channel, we no longer
+  need a Clone-able Mutex.  In this case, we can use OwnedExclusive as
+  our Mutex impl, which has no runtime overhead.
+
   ```
     // (Other imports omitted)
     use stm32f3xx-hal::pwm::tim16;
@@ -107,7 +111,7 @@
 
     // Set the resolution of our duty cycle to 9000 and our period to
     // 50hz.
-    let mut c1_no_pins = tim16(
+    let mut c1_no_pins: PwmChannel<OwnedExclusive<_>, _, _> = tim16(
         device.TIM3,
         9000,
         50.hz(),
@@ -453,7 +457,7 @@ pub struct PwmChannel<M, X, T> {
 }
 
 macro_rules! pwm_timer_private {
-    ($timx:ident, $TIMx:ty, $res:ty, $APBx:ident, $pclkz:ident, $timxrst:ident, $timxen:ident, $enable_break_timer:expr, [$($TIMx_CHy:ident),+], [$($x:ident),+]) => {
+    ($timx:ident, $TIMx:ty, $res:ty, $APBx:ident, $pclkz:ident, $timxrst:ident, $timxen:ident, $enable_break_timer:expr, [$($bound:ident),*], [$($TIMx_CHy:ident),+], [$($x:ident),+]) => {
         /// Create one or more output channels from a TIM Peripheral
         /// This function requires the maximum resolution of the duty cycle,
         /// the period of the PWM signal and the frozen clock configuration.
@@ -464,7 +468,7 @@ macro_rules! pwm_timer_private {
         /// a resolution of 9000.  This allows the servo to be set in increments
         /// of exactly one degree.
         #[allow(unused_parens)]
-        pub fn $timx<MAPB: Mutex<Data = $APBx>, MTIM: Mutex<Data = $TIMx> + Clone + From<$TIMx>>(tim: $TIMx, res: $res, freq: Hertz, clocks: &Clocks, m_apb: &mut MAPB) -> ($(PwmChannel<MTIM, $TIMx_CHy, NoPins>),+) {
+        pub fn $timx<MAPB: Mutex<Data = $APBx>, MTIM: Mutex<Data = $TIMx> + From<$TIMx> $(+ $bound)*>(tim: $TIMx, res: $res, freq: Hertz, clocks: &Clocks, m_apb: &mut MAPB) -> ($(PwmChannel<MTIM, $TIMx_CHy, NoPins>),+) {
             // Power the timer and reset it to ensure a clean state
             // We use unsafe here to abstract away this implementation detail
             // Justification: It is safe because only scopes with mutable references
@@ -512,13 +516,13 @@ macro_rules! pwm_timer_private {
             // TODO: Passing in the constructor is a bit silly,
             // is there an alternative approach to get this to repeat,
             // even though its not dynamic?
-            ($($x { timx: timx.clone(), timx_chy: PhantomData, pin_status: PhantomData }),+)
+            ($(PwmChannel { timx: timx.$x(), timx_chy: PhantomData, pin_status: PhantomData }),+)
         }
     }
 }
 
 macro_rules! pwm_timer_basic {
-    ($timx:ident, $TIMx:ty, $res:ty, $APBx:ident, $pclkz:ident, $timxrst:ident, $timxen:ident, [$($TIMx_CHy:ident),+], [$($x:ident),+]) => {
+    ($timx:ident, $TIMx:ty, $res:ty, $APBx:ident, $pclkz:ident, $timxrst:ident, $timxen:ident, [$($bound:ident),*], [$($TIMx_CHy:ident),+], [$($x:ident),+]) => {
         pwm_timer_private!(
             $timx,
             $TIMx,
@@ -528,6 +532,7 @@ macro_rules! pwm_timer_basic {
             $timxrst,
             $timxen,
             |_| (),
+            [$($bound),*],
             [$($TIMx_CHy),+],
             [$($x),+]
         );
@@ -535,7 +540,7 @@ macro_rules! pwm_timer_basic {
 }
 
 macro_rules! pwm_timer_with_break {
-    ($timx:ident, $TIMx:ty, $res:ty, $APBx:ident, $pclkz:ident, $timxrst:ident, $timxen:ident, [$($TIMx_CHy:ident),+], [$($x:ident),+]) => {
+    ($timx:ident, $TIMx:ty, $res:ty, $APBx:ident, $pclkz:ident, $timxrst:ident, $timxen:ident, [$($bound:ident),*], [$($TIMx_CHy:ident),+], [$($x:ident),+]) => {
         pwm_timer_private!(
             $timx,
             $TIMx,
@@ -545,6 +550,7 @@ macro_rules! pwm_timer_with_break {
             $timxrst,
             $timxen,
             |tim: &$TIMx| tim.bdtr.modify(|_, w| w.moe().set_bit()),
+            [$($bound),*],
             [$($TIMx_CHy),+],
             [$($x),+]
         );
@@ -827,8 +833,9 @@ macro_rules! tim1_common {
             pclk2,
             tim1rst,
             tim1en,
+            [Clone],
             [TIM1_CH1, TIM1_CH2, TIM1_CH3, TIM1_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [clone, clone, clone, clone]
         );
 
         // Channels
@@ -936,8 +943,9 @@ pwm_timer_basic!(
     pclk1,
     tim2rst,
     tim2en,
+    [Clone],
     [TIM2_CH1, TIM2_CH2, TIM2_CH3, TIM2_CH4],
-    [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+    [clone, clone, clone, clone]
 );
 
 // Channels
@@ -1035,8 +1043,9 @@ macro_rules! tim3_common {
             pclk1,
             tim3rst,
             tim3en,
+            [Clone],
             [TIM3_CH1, TIM3_CH2, TIM3_CH3, TIM3_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [clone, clone, clone, clone]
         );
 
         // Channels
@@ -1173,8 +1182,9 @@ macro_rules! tim4_common {
             pclk1,
             tim4rst,
             tim4en,
+            [Clone],
             [TIM4_CH1, TIM4_CH2, TIM4_CH3, TIM4_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [clone, clone, clone, clone]
         );
 
         // Channels
@@ -1268,8 +1278,9 @@ macro_rules! tim5 {
             pclk1,
             tim5rst,
             tim5en,
+            [Clone],
             [TIM5_CH1, TIM5_CH2, TIM5_CH3, TIM5_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [clone, clone, clone, clone]
         );
 
         // Channels
@@ -1325,8 +1336,9 @@ macro_rules! tim8 {
             pclk2,
             tim8rst,
             tim8en,
+            [Clone],
             [TIM8_CH1, TIM8_CH2, TIM8_CH3, TIM8_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [clone, clone, clone, clone]
         );
 
         // Channels
@@ -1400,8 +1412,9 @@ macro_rules! tim12 {
             pclk1,
             tim12rst,
             tim12en,
+            [Clone],
             [TIM12_CH1, TIM12_CH2],
-            [PwmChannel, PwmChannel]
+            [clone, clone]
         );
 
         // Channels
@@ -1447,8 +1460,9 @@ macro_rules! tim13 {
             pclk1,
             tim13rst,
             tim13en,
+            [],
             [TIM13_CH1],
-            [PwmChannel]
+            [into]
         );
 
         // Channels
@@ -1489,8 +1503,9 @@ macro_rules! tim14 {
             pclk1,
             tim14rst,
             tim14en,
+            [Clone],
             [TIM14_CH1],
-            [PwmChannel]
+            [timx.clone()]
         );
 
         // Channels
@@ -1518,8 +1533,9 @@ pwm_timer_with_break!(
     pclk2,
     tim15rst,
     tim15en,
+    [Clone],
     [TIM15_CH1, TIM15_CH2],
-    [PwmChannel, PwmChannel]
+    [clone, clone]
 );
 
 // Channels
@@ -1569,8 +1585,9 @@ pwm_timer_with_break!(
     pclk2,
     tim16rst,
     tim16en,
+    [],
     [TIM16_CH1],
-    [PwmChannel]
+    [into]
 );
 
 // Channels
@@ -1605,8 +1622,9 @@ pwm_timer_with_break!(
     pclk2,
     tim17rst,
     tim17en,
+    [],
     [TIM17_CH1],
-    [PwmChannel]
+    [into]
 );
 
 // Channels
@@ -1653,8 +1671,9 @@ macro_rules! tim19 {
             pclk2,
             tim19rst,
             tim19en,
+            [Clone],
             [TIM19_CH1, TIM19_CH2, TIM19_CH3, TIM19_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [timx.clone(), timx.clone(), timx.clone(), timx.clone()]
         );
 
         // Channels
@@ -1710,8 +1729,9 @@ macro_rules! tim20 {
             pclk2,
             tim20rst,
             tim20en,
+            [Clone],
             [TIM20_CH1, TIM20_CH2, TIM20_CH3, TIM20_CH4],
-            [PwmChannel, PwmChannel, PwmChannel, PwmChannel]
+            [timx.clone(), timx.clone(), timx.clone(), timx.clone()]
         );
 
         // Channels

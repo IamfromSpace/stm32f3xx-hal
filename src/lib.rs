@@ -121,6 +121,7 @@ pub mod global_interrupt;
 pub mod gpio;
 #[cfg(feature = "device-selected")]
 pub mod i2c;
+pub mod owned_exclusive;
 #[cfg(feature = "device-selected")]
 pub mod prelude;
 #[cfg(feature = "device-selected")]

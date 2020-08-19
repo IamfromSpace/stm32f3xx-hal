@@ -15,6 +15,7 @@ use hal::hal::PwmPin;
 use hal::flash::FlashExt;
 use hal::global_interrupt::GlobalInterrupt;
 use hal::gpio::GpioExt;
+use hal::owned_exclusive::OwnedExclusive;
 use hal::pac;
 use hal::pwm::{tim16, tim2, tim3, tim8, PwmChannel};
 use hal::rcc::RccExt;
@@ -118,7 +119,7 @@ fn main() -> ! {
     //
     // A single channel timer, so it doesn't return a tuple.  We can
     // just use it directly
-    let mut tim16_ch1: PwmChannel<GlobalInterrupt<_>, _, _> = tim16(
+    let mut tim16_ch1: PwmChannel<OwnedExclusive<_>, _, _> = tim16(
         dp.TIM16,
         1280,                               // resolution of duty cycle
         50.hz(),                            // frequency of period
